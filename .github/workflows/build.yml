@@ -1,0 +1,55 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Locate Android SDK tools
+        run: |
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          BT=$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)
+          JAR=$(ls -d "$SDK"/platforms/android-*/android.jar | sort -V | tail -1)
+          echo "SDK_JAR=$JAR" >> "$GITHUB_ENV"
+          echo "$BT" >> "$GITHUB_PATH"
+          echo "build-tools: $BT"
+          echo "android.jar: $JAR"
+
+      - name: Build signed APK
+        run: bash scripts/build-apk.sh .
+
+      - name: Show APK details
+        run: |
+          ls -lh build/app.apk
+          aapt2 dump badging build/app.apk | head -5
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tasbih-apk
+          path: build/app.apk
+          if-no-files-found: error
+
+      - name: Attach APK to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app.apk
